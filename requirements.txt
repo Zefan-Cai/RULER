@@ -1,0 +1,8 @@
+numpy
+tqdm
+wonderwords
+tenacity
+nltk
+transformers
+html2text
+bs4
