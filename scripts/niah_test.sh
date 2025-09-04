@@ -1,6 +1,6 @@
 TOKENIZER_PATH="/mnt/localssd/TTT/flame_mini/fla-hub-local/transformer-1.3B-100B"  # Change this to your tokenizer path
 TOKENIZER_TYPE="hf"
-SAVE_DIR="/mnt/localssd/controllable_output"
+SAVE_DIR="/mnt/localssd/RULER/controllable_output"
 
 python scripts/data/synthetic/niah_controllable.py \
     --save_dir ${SAVE_DIR} \
