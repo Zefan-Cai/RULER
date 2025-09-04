@@ -112,8 +112,8 @@ def create_heatmap(results, save_path=None, title="NIAH Performance Heatmap"):
         columns=[f"{l//1000}K" if l >= 1000 else str(l) for l in lengths]
     )
     
-    # Create figure
-    plt.figure(figsize=(14, 8))
+    # Create figure - single performance heatmap only
+    plt.figure(figsize=(12, 8))
     
     # Create heatmap
     sns.heatmap(
@@ -123,7 +123,7 @@ def create_heatmap(results, save_path=None, title="NIAH Performance Heatmap"):
         cmap='RdYlGn',
         vmin=0,
         vmax=1,
-        cbar_kws={'label': 'Score'},
+        cbar_kws={'label': 'Accuracy Score'},
         linewidths=0.5,
         linecolor='gray'
     )
@@ -135,14 +135,11 @@ def create_heatmap(results, save_path=None, title="NIAH Performance Heatmap"):
     # Rotate x-axis labels for better readability
     plt.xticks(rotation=45, ha='right')
     
-    # Add grid
-    plt.grid(True, alpha=0.3, linestyle='--')
-    
     plt.tight_layout()
     
     if save_path:
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        print(f"Heatmap saved to {save_path}")
+        print(f"Performance heatmap saved to {save_path}")
     
     plt.show()
     

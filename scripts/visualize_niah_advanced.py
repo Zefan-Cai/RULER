@@ -106,14 +106,14 @@ def process_results(data_file, output_file, partial_credit=False):
     return results, detailed_results
 
 
-def create_heatmap(results, save_path=None, title="NIAH Performance Heatmap", 
-                   figsize=(14, 8), annotate=True):
-    """Enhanced heatmap with customization options"""
+def create_heatmap(results, save_dir=None, title="NIAH Performance Heatmap", 
+                   figsize=(12, 8), annotate=True):
+    """Create separate performance and sample count heatmaps"""
     lengths = sorted(list(results.keys()))
     depths = sorted(list(set(depth for length_results in results.values() 
                             for depth in length_results.keys())))
     
-    # Create matrix
+    # Create matrices
     score_matrix = np.zeros((len(depths), len(lengths)))
     sample_counts = np.zeros((len(depths), len(lengths)))
     
@@ -126,17 +126,21 @@ def create_heatmap(results, save_path=None, title="NIAH Performance Heatmap",
             else:
                 score_matrix[i, j] = np.nan
     
-    # Create DataFrame
+    # Create DataFrames
     df = pd.DataFrame(
         score_matrix,
         index=[f"{d:.1f}%" for d in depths],
         columns=[f"{l//1000}K" if l >= 1000 else str(l) for l in lengths]
     )
     
-    # Create figure
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(figsize[0]*1.5, figsize[1]))
+    df_counts = pd.DataFrame(
+        sample_counts,
+        index=[f"{d:.1f}%" for d in depths],
+        columns=[f"{l//1000}K" if l >= 1000 else str(l) for l in lengths]
+    )
     
-    # Main heatmap
+    # Create performance heatmap
+    plt.figure(figsize=figsize)
     sns.heatmap(
         df,
         annot=annotate,
@@ -146,20 +150,23 @@ def create_heatmap(results, save_path=None, title="NIAH Performance Heatmap",
         vmax=1,
         cbar_kws={'label': 'Accuracy Score'},
         linewidths=0.5,
-        linecolor='gray',
-        ax=ax1
+        linecolor='gray'
     )
-    ax1.set_title(title, fontsize=14)
-    ax1.set_xlabel('Context Length (tokens)', fontsize=12)
-    ax1.set_ylabel('Needle Depth Position', fontsize=12)
+    plt.title(title, fontsize=16, pad=20)
+    plt.xlabel('Context Length (tokens)', fontsize=12)
+    plt.ylabel('Needle Depth Position', fontsize=12)
+    plt.xticks(rotation=45, ha='right')
+    plt.tight_layout()
     
-    # Sample count heatmap
-    df_counts = pd.DataFrame(
-        sample_counts,
-        index=[f"{d:.1f}%" for d in depths],
-        columns=[f"{l//1000}K" if l >= 1000 else str(l) for l in lengths]
-    )
+    if save_dir:
+        save_path = Path(save_dir) / 'heatmap.png'
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"Performance heatmap saved to {save_path}")
     
+    plt.show()
+    
+    # Create sample count heatmap
+    plt.figure(figsize=(figsize[0]*0.8, figsize[1]*0.8))
     sns.heatmap(
         df_counts,
         annot=True,
@@ -167,18 +174,20 @@ def create_heatmap(results, save_path=None, title="NIAH Performance Heatmap",
         cmap='Blues',
         cbar_kws={'label': 'Sample Count'},
         linewidths=0.5,
-        linecolor='gray',
-        ax=ax2
+        linecolor='gray'
     )
-    ax2.set_title('Sample Distribution', fontsize=14)
-    ax2.set_xlabel('Context Length (tokens)', fontsize=12)
-    ax2.set_ylabel('Needle Depth Position', fontsize=12)
-    
+    plt.title('Sample Distribution', fontsize=14)
+    plt.xlabel('Context Length (tokens)', fontsize=12)
+    plt.ylabel('Needle Depth Position', fontsize=12)
+    plt.xticks(rotation=45, ha='right')
     plt.tight_layout()
     
-    if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        print(f"Heatmap saved to {save_path}")
+    if save_dir:
+        count_path = Path(save_dir) / 'sample_counts.png'
+        plt.savefig(count_path, dpi=300, bbox_inches='tight')
+        print(f"Sample count heatmap saved to {count_path}")
+    
+    plt.show()
     
     return df, df_counts
 
