@@ -370,7 +370,7 @@ def generate_samples():
 
 
 def main():
-    save_file = args.save_dir / f'{args.save_name}' / f'{args.subset}.jsonl'
+    save_file = args.save_dir / f'{args.save_name}.jsonl'
     save_file.parent.mkdir(parents=True, exist_ok=True)
     
     logger.info(f"Generating controllable NIAH dataset...")
