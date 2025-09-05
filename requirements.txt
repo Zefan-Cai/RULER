@@ -6,3 +6,5 @@ nltk
 transformers
 html2text
 bs4
+matplotlib
+seaborn

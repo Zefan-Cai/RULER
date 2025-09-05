@@ -159,7 +159,7 @@ def create_heatmap(results, save_dir=None, title="NIAH Performance Heatmap",
     plt.tight_layout()
     
     if save_dir:
-        save_path = Path(save_dir) / 'heatmap.png'
+        save_path = Path(save_dir)
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
         print(f"Performance heatmap saved to {save_path}")
     
