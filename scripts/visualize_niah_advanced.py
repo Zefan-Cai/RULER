@@ -107,7 +107,7 @@ def process_results(data_file, output_file, partial_credit=False):
 
 
 def create_heatmap(results, save_dir=None, title="NIAH Performance Heatmap", 
-                   figsize=(12, 8), annotate=True):
+                   figsize=(48, 8), annotate=True):
     """Create separate performance and sample count heatmaps"""
     lengths = sorted(list(results.keys()))
     depths = sorted(list(set(depth for length_results in results.values() 
