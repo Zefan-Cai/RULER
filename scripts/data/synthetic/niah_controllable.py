@@ -79,6 +79,7 @@ parser.add_argument("--num_needle_q", type=int, default=1)
 parser.add_argument("--type_haystack", type=str, default='essay', help='[Options] noise, essay, needle.')
 parser.add_argument("--type_needle_k", type=str, default='words', help='[Options] numbers, words, uuids.')
 parser.add_argument("--type_needle_v", type=str, default='numbers', help='[Options] numbers, words, uuids.')
+parser.add_argument("--num_digits_needle_v", type=int, default=7, help='number of digits for needle values when type_needle_v is numbers')
 parser.add_argument("--model_template_token", type=int, default=0, help='used for nemo skills, minus num of model template token')
 
 args = parser.parse_args()
@@ -142,15 +143,18 @@ def generate_random_word():
 def generate_random_uuid():
     return str(uuid.UUID(int=random.getrandbits(128), version=4))
 
-def generate_random(type_needle: str):
+def generate_random(type_needle: str, num_digits=None):
     if type_needle == 'numbers':
-        return generate_random_number()
+        if num_digits is not None:
+            return generate_random_number(num_digits)
+        else:
+            return generate_random_number()
     elif type_needle == 'words':
         return generate_random_word()
     elif type_needle == 'uuids':
         return generate_random_uuid()
     else:
-        raise NotImplementedError(f'{args.type_needle} is not implemented.')
+        raise NotImplementedError(f'{type_needle} is not implemented.')
 
 
 def generate_input_output_at_depth(num_haystack, depth_percent):
@@ -160,7 +164,11 @@ def generate_input_output_at_depth(num_haystack, depth_percent):
         keys.append(generate_random(args.type_needle_k))
         value = []
         for _ in range(args.num_needle_v):
-            value.append(generate_random(args.type_needle_v))
+            # Pass num_digits_needle_v when generating needle values
+            if args.type_needle_v == 'numbers':
+                value.append(generate_random(args.type_needle_v, args.num_digits_needle_v))
+            else:
+                value.append(generate_random(args.type_needle_v))
             needles.append(needle.format(
                 type_needle_v=args.type_needle_v,
                 key=keys[-1],
@@ -204,7 +212,7 @@ def generate_input_output_at_depth(num_haystack, depth_percent):
             sentences = [haystack.format(
                 type_needle_v=args.type_needle_v,
                 key=generate_random(args.type_needle_k),
-                value=generate_random(args.type_needle_v),
+                value=generate_random(args.type_needle_v, args.num_digits_needle_v if args.type_needle_v == 'numbers' else None),
             ) for _ in range(num_haystack)]
 
         # Insert at specific depth
