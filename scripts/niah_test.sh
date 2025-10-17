@@ -4,16 +4,16 @@ SAVE_DIR="/mnt/localssd/data"
 
 python scripts/data/synthetic/niah_controllable.py \
     --save_dir ${SAVE_DIR} \
-    --save_name niah_64k_1k_10pos_5samples_essay_words_numbers2 \
+    --save_name niah_32k_1k_10pos_5samples_essay_words_numbers7 \
     --tokenizer_path ${TOKENIZER_PATH} \
     --tokenizer_type ${TOKENIZER_TYPE} \
-    --test_max_length 64000 \
+    --test_max_length 32000 \
     --length_interval 1000 \
     --num_depth_positions 10 \
     --num_samples 5 \
-    --tokens_to_generate 64 \
+    --tokens_to_generate 16 \
     --type_haystack essay \
     --type_needle_k words \
     --type_needle_v numbers \
-    --num_digits_needle_v=2 \
+    --num_digits_needle_v=7 \
     --keep_answer_prefix
