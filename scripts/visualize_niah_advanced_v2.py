@@ -241,7 +241,9 @@ def create_heatmap(results, save_dir=None, title="NIAH Performance Heatmap",
     plt.tight_layout()
     
     if save_dir:
-        count_path = Path(save_dir) / 'sample_counts.png'
+        save_path = Path(save_dir)
+        folder_path = save_path.parent if save_path.is_file() else save_path
+        count_path = folder_path / 'sample_counts.png'
         plt.savefig(count_path, dpi=300, bbox_inches='tight')
         print(f"Sample count heatmap saved to {count_path}")
     
