@@ -20,6 +20,7 @@ from collections import defaultdict
 import pandas as pd
 from typing import Dict, List, Tuple
 import matplotlib.gridspec as gridspec
+import matplotlib as mpl  # <-- NEW: for color normalization
 
 
 def load_jsonl(file_path):
@@ -164,43 +165,61 @@ def process_results(data_file, output_file, partial_credit=True, partial_mode="l
     return results, detailed_results
 
 
-def create_heatmap(results, save_dir=None, title="NIAH Performance Heatmap", 
-                   figsize=(48, 8), annotate=True):
-    """Create separate performance and sample count heatmaps"""
+# === NEW: 复合图（热力图 + 列均值柱状图 + 行均值柱状图），并导出 JSON（cell + 行/列均值） ===
+def create_heatmap_with_marginals(
+    results,
+    save_path=None,
+    title="NIAH Performance Heatmap",
+    figsize=(24, 18),
+    annotate=True
+):
+    """
+    Create performance heatmap and two marginal bar charts (per-column averages and per-row averages),
+    stacked vertically and saved to `save_path` (the same path you would use for the heatmap).
+
+    Returns:
+        df_scores: DataFrame of mean scores (rows=depths, cols=lengths)
+        df_counts: DataFrame of sample counts
+        col_avgs:  per-column average (Series indexed by columns)
+        row_avgs:  per-row average (Series indexed by rows)
+    """
     lengths = sorted(list(results.keys()))
-    depths = sorted(list(set(depth for length_results in results.values() 
-                            for depth in length_results.keys())))
-    
-    # Create matrices
-    score_matrix = np.zeros((len(depths), len(lengths)))
+    depths = sorted(list(set(depth for length_results in results.values()
+                             for depth in length_results.keys())))
+
+    # 构建矩阵
+    score_matrix = np.full((len(depths), len(lengths)), np.nan)
     sample_counts = np.zeros((len(depths), len(lengths)))
-    
+
     for i, depth in enumerate(depths):
         for j, length in enumerate(lengths):
             if depth in results[length]:
                 scores = results[length][depth]
-                score_matrix[i, j] = np.mean(scores) if scores else 0.0
+                score_matrix[i, j] = np.mean(scores) if scores else np.nan
                 sample_counts[i, j] = len(scores)
-            else:
-                score_matrix[i, j] = np.nan
-    
-    # Create DataFrames
-    df = pd.DataFrame(
-        score_matrix,
-        index=[f"{d:.1f}%" for d in depths],
-        columns=[f"{l//1000}K" if l >= 1000 else str(l) for l in lengths]
-    )
-    
-    df_counts = pd.DataFrame(
-        sample_counts,
-        index=[f"{d:.1f}%" for d in depths],
-        columns=[f"{l//1000}K" if l >= 1000 else str(l) for l in lengths]
-    )
-    
-    # Create performance heatmap
-    plt.figure(figsize=figsize)
+
+    # DataFrame
+    col_labels = [f"{l//1000}K" if l >= 1000 else str(l) for l in lengths]
+    row_labels = [f"{d:.1f}%" for d in depths]
+
+    df_scores = pd.DataFrame(score_matrix, index=row_labels, columns=col_labels)
+    df_counts = pd.DataFrame(sample_counts, index=row_labels, columns=col_labels)
+
+    # 均值（忽略 NaN）
+    col_avgs = pd.Series(np.nanmean(score_matrix, axis=0), index=col_labels)
+
+    # 行均值按深度升序（5% -> 95%），barh 默认首项在最底部，稍后 invert_yaxis() 以把 5% 放最上面
+    row_means = np.nanmean(score_matrix, axis=1)
+    row_avgs = pd.Series(row_means, index=row_labels)
+
+    # 画合成图：上=主热力图，中=列均值柱状图（竖），下=行均值柱状图（横）
+    fig = plt.figure(figsize=figsize)
+    gs = gridspec.GridSpec(nrows=3, ncols=1, height_ratios=[5.0, 1.9, 2.1], hspace=0.32)
+
+    # (1) 主热力图
+    ax0 = fig.add_subplot(gs[0, 0])
     sns.heatmap(
-        df,
+        df_scores,
         annot=annotate,
         fmt='.2f',
         cmap='RdYlGn',
@@ -208,48 +227,121 @@ def create_heatmap(results, save_dir=None, title="NIAH Performance Heatmap",
         vmax=1,
         cbar_kws={'label': 'Accuracy Score'},
         linewidths=0.5,
-        linecolor='gray'
+        linecolor='gray',
+        ax=ax0
     )
-    plt.title(title, fontsize=16, pad=20)
-    plt.xlabel('Context Length (tokens)', fontsize=12)
-    plt.ylabel('Needle Depth Position', fontsize=12)
-    plt.xticks(rotation=45, ha='right')
+    ax0.set_title(title, fontsize=18, pad=14)
+    ax0.set_xlabel('Context Length (tokens)', fontsize=12)
+    ax0.set_ylabel('Needle Depth Position', fontsize=12)
+    ax0.tick_params(axis='x', rotation=45)
+
+    # 公共配色：与热力图一致
+    cmap = plt.get_cmap('RdYlGn')
+    norm = mpl.colors.Normalize(vmin=0, vmax=1)
+
+    # (2) 列均值柱状图（竖）
+    ax1 = fig.add_subplot(gs[1, 0])
+    colors_col = cmap(norm(col_avgs.values))
+    bars1 = ax1.bar(col_avgs.index, col_avgs.values, color=colors_col, edgecolor='black', linewidth=0.6)
+    ax1.set_ylim(0, 1.05)
+    ax1.set_title('Per-Column Average (by Context Length)', fontsize=14, pad=6)
+    ax1.set_xlabel('Context Length (tokens)', fontsize=12)
+    ax1.set_ylabel('Mean Accuracy', fontsize=12)
+    ax1.grid(True, alpha=0.25, axis='y')
+    ax1.tick_params(axis='x', rotation=45)
+    for spine in ['top', 'right']:
+        ax1.spines[spine].set_visible(False)
+
+    # 柱顶数值（避免越界：接近顶部时放在柱子内）
+    for rect, val in zip(bars1, col_avgs.values):
+        y = rect.get_height()
+        if y >= 0.96:
+            label_y = max(y - 0.04, 0.02)
+            va = 'top'
+        else:
+            label_y = min(y + 0.02, 1.02)
+            va = 'bottom'
+        ax1.text(rect.get_x() + rect.get_width()/2, label_y, f'{val:.2f}',
+                 ha='center', va=va, fontsize=10, clip_on=False)
+
+    # (3) 行均值柱状图（横，5% 在上，95% 在下）
+    ax2 = fig.add_subplot(gs[2, 0])
+    colors_row = cmap(norm(row_avgs.values))
+    bars2 = ax2.barh(row_avgs.index, row_avgs.values, color=colors_row, edgecolor='black', linewidth=0.6)
+    ax2.set_xlim(0, 1.05)
+    ax2.set_title('Per-Row Average (by Needle Depth)', fontsize=14, pad=6)
+    ax2.set_xlabel('Mean Accuracy', fontsize=12)
+    ax2.set_ylabel('Needle Depth Position', fontsize=12)
+    ax2.grid(True, alpha=0.25, axis='x')
+    for spine in ['top', 'right']:
+        ax2.spines[spine].set_visible(False)
+
+    # 关键：翻转 y 轴，让首项（5%）在最上方、95% 在最下方
+    ax2.invert_yaxis()
+
+    # 柱端数值（避免越界：接近右侧时放在柱内）
+    for rect, val in zip(bars2, row_avgs.values):
+        x = rect.get_width()
+        y = rect.get_y() + rect.get_height()/2
+        if x >= 0.96:
+            label_x = max(x - 0.02, 0.02)
+            ha = 'right'
+        else:
+            label_x = min(x + 0.01, 1.02)
+            ha = 'left'
+        ax2.text(label_x, y, f'{val:.2f}', va='center', ha=ha, fontsize=10, clip_on=False)
+
     plt.tight_layout()
-    
-    if save_dir:
-        save_path = Path(save_dir)
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        print(f"Performance heatmap saved to {save_path}")
-    
-    plt.show()
-    
-    # Create sample count heatmap
-    plt.figure(figsize=(figsize[0]*0.8, figsize[1]*0.8))
-    sns.heatmap(
-        df_counts,
-        annot=True,
-        fmt='.0f',
-        cmap='Blues',
-        cbar_kws={'label': 'Sample Count'},
-        linewidths=0.5,
-        linecolor='gray'
-    )
-    plt.title('Sample Distribution', fontsize=14)
-    plt.xlabel('Context Length (tokens)', fontsize=12)
-    plt.ylabel('Needle Depth Position', fontsize=12)
-    plt.xticks(rotation=45, ha='right')
-    plt.tight_layout()
-    
-    if save_dir:
-        save_path = Path(save_dir)
-        folder_path = save_path.parent if save_path.is_file() else save_path
-        count_path = folder_path / 'sample_counts.png'
+
+    # 保存合成图到 save_path（即热力图的保存路径）
+    if save_path:
+        save_path = Path(save_path)
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"Heatmap + Marginal Bar Charts saved to {save_path}")
+
+    plt.close(fig)
+
+    # 额外保存 sample count 热力图（与原逻辑一致）
+    if save_path:
+        count_path = save_path.parent / 'sample_counts.png'
+        plt.figure(figsize=(max(12, len(col_labels)*0.9), max(6, len(row_labels)*0.4)))
+        sns.heatmap(
+            df_counts,
+            annot=True,
+            fmt='.0f',
+            cmap='Blues',
+            cbar_kws={'label': 'Sample Count'},
+            linewidths=0.5,
+            linecolor='gray'
+        )
+        plt.title('Sample Distribution', fontsize=14)
+        plt.xlabel('Context Length (tokens)', fontsize=12)
+        plt.ylabel('Needle Depth Position', fontsize=12)
+        plt.xticks(rotation=45, ha='right')
+        plt.tight_layout()
         plt.savefig(count_path, dpi=300, bbox_inches='tight')
         print(f"Sample count heatmap saved to {count_path}")
-    
-    plt.show()
-    
-    return df, df_counts
+        plt.close()
+
+    # JSON：每个 cell + 行/列均值，便于重画
+    if save_path:
+        json_payload = {
+            "matrix_scores": {
+                "rows": row_labels,
+                "cols": col_labels,
+                "values": [[None if np.isnan(v) else float(v) for v in row] for row in score_matrix]
+            },
+            "per_column_average": {k: (None if np.isnan(v) else float(v)) for k, v in col_avgs.to_dict().items()},
+            "per_row_average": {k: (None if np.isnan(v) else float(v)) for k, v in row_avgs.to_dict().items()}
+        }
+        json_out = save_path.parent / 'scores_with_averages.json'
+        with open(json_out, 'w') as f:
+            json.dump(json_payload, f, indent=2)
+        print(f"Scores + row/column averages saved to {json_out}")
+
+    return df_scores, df_counts, col_avgs, row_avgs
+# === END NEW ===
 
 
 def create_line_plot(results, save_path=None, title="Performance by Context Length"):
@@ -536,14 +628,18 @@ def main():
     prefix = args.title_prefix + ' ' if args.title_prefix else ''
     
     if 'heatmap' in args.plot_types:
-        df, df_counts = create_heatmap(
+        # === NEW: 使用复合图函数，保存到 heatmap.png；并输出 CSV/JSON ===
+        heatmap_path = save_dir / 'heatmap.png'
+        df, df_counts, col_avgs, row_avgs = create_heatmap_with_marginals(
             results, 
-            save_dir / 'heatmap.png',
+            save_path=heatmap_path,
             title=f'{prefix}NIAH Performance Heatmap'
         )
         # Save data to CSV
         df.to_csv(save_dir / 'scores_matrix.csv')
         df_counts.to_csv(save_dir / 'counts_matrix.csv')
+        col_avgs.to_csv(save_dir / 'per_column_average.csv', header=['mean_accuracy'])
+        row_avgs.to_csv(save_dir / 'per_row_average.csv', header=['mean_accuracy'])
     
     if 'line' in args.plot_types:
         create_line_plot(
@@ -592,7 +688,10 @@ def main():
     
     print(f"\nAll results saved to {save_dir}/")
     print("Files generated:")
-    print(f"  - heatmap.png: Main performance heatmap")
+    print(f"  - heatmap.png: Main performance heatmap + per-column & per-row averages (stacked)")
+    print(f"  - sample_counts.png: Sample count heatmap")
+    print(f"  - per_column_average.csv: Mean accuracy by context length")
+    print(f"  - per_row_average.csv: Mean accuracy by needle depth")
     print(f"  - line_plot.png: Performance trends")
     print(f"  - scatter_plot.png: Needle position analysis")
     print(f"  - distributions.png: Score distributions")
@@ -600,6 +699,7 @@ def main():
     print(f"  - scores_matrix.csv: Score matrix data")
     print(f"  - counts_matrix.csv: Sample count matrix")
     print(f"  - detailed_results.json: Complete results in JSON")
+    print(f"  - scores_with_averages.json: Cell scores + per-row/column averages (for re-plotting)")
     
     if not args.no_show:
         plt.show()
